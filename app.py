@@ -12,50 +12,40 @@ import matplotlib.pyplot as plt
 
 app = Flask(__name__)
 
-# 設定你的 LINE BOT 設定（需填入自己的 Token 和 Secret）
+# 設定 LINE BOT
 LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
 LINE_CHANNEL_SECRET = os.getenv("LINE_CHANNEL_SECRET")
-LINE_USER_ID = "你的 LINE 使用者 ID"  # 你需要填入你的 LINE 個人 ID
 
 line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
 
 # 儲存記帳 & 行程的資料
 records = []
+USERS_FILE = "users.json"
 
-def save_data():
-    with open("records.json", "w", encoding="utf-8") as f:
-        json.dump(records, f, ensure_ascii=False, indent=2)
+# 載入已註冊的使用者
+def load_users():
+    if os.path.exists(USERS_FILE):
+        with open(USERS_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return []
 
+# 存儲已註冊的使用者
+def save_users(users):
+    with open(USERS_FILE, "w", encoding="utf-8") as f:
+        json.dump(users, f, ensure_ascii=False, indent=2)
+
+# 載入記帳 & 行程
 def load_data():
     global records
     if os.path.exists("records.json"):
         with open("records.json", "r", encoding="utf-8") as f:
             records = json.load(f)
 
-# 設定每天 06:00 自動推送當日行程
-def send_daily_schedule():
-    today = datetime.datetime.now().strftime("%Y-%m-%d")
-    records_today = [r["description"] for r in records if r["datetime"].startswith(today)]
-    
-    message = f"📅 今日行程 & 記帳 📅\n"
-    if records_today:
-        message += "\n".join([f"🔹 {r}" for r in records_today])
-    else:
-        message += "📌 今天沒有任何記錄"
-    
-    line_bot_api.push_message(LINE_USER_ID, TextSendMessage(text=message))
-
-# 設定排程
-schedule.every().day.at("06:00").do(send_daily_schedule)
-
-def schedule_runner():
-    while True:
-        schedule.run_pending()
-        time.sleep(60)  # 每 60 秒檢查一次
-
-# 啟動排程
-threading.Thread(target=schedule_runner, daemon=True).start()
+# 存儲記帳 & 行程
+def save_data():
+    with open("records.json", "w", encoding="utf-8") as f:
+        json.dump(records, f, ensure_ascii=False, indent=2)
 
 @app.route("/", methods=["GET"])
 def home():
@@ -89,10 +79,41 @@ def generate_calendar_image(records):
     plt.savefig(filename, bbox_inches="tight")
     return filename
 
+# 設定每天 06:00 自動推送當日行程
+def send_daily_schedule():
+    today = datetime.datetime.now().strftime("%Y-%m-%d")
+    users = load_users()
+    message = "📅 今日行程 & 記帳 📅\n"
+    records_today = [r["description"] for r in records if r["datetime"].startswith(today)]
+
+    if records_today:
+        message += "\n".join([f"🔹 {r}" for r in records_today])
+    else:
+        message += "📌 今天沒有任何記錄"
+    
+    for user_id in users:
+        line_bot_api.push_message(user_id, TextSendMessage(text=message))
+
+schedule.every().day.at("06:00").do(send_daily_schedule)
+
+def schedule_runner():
+    while True:
+        schedule.run_pending()
+        time.sleep(60)
+
+threading.Thread(target=schedule_runner, daemon=True).start()
+
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
     user_input = event.message.text.strip()
+    user_id = event.source.user_id
     today = datetime.datetime.now().strftime("%Y-%m-%d")
+
+    users = load_users()
+    if user_id not in users:
+        users.append(user_id)
+        save_users(users)
+        line_bot_api.push_message(user_id, TextSendMessage(text="✅ 你已成功註冊！每日 6:00 會收到行程提醒！"))
 
     if user_input == "日曆":
         records_today = [r["description"] for r in records if r["datetime"].startswith(today)]
@@ -107,7 +128,6 @@ def handle_message(event):
             preview_image_url=f"https://你的-render-網址/{calendar_image}"
         )
         line_bot_api.reply_message(event.reply_token, message)
-
     else:
         response = "請輸入「日曆」來查看今日記錄"
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text=response))
