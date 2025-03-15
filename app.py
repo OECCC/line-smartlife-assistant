@@ -78,10 +78,8 @@ def handle_message(event):
         total = sum(r["amount"] for r in records if r["type"] == "消費")
         response = f"目前總消費金額：{total} 元"
     elif "行程" in user_input:
-        event_list = [r["description"] for r in records if r["type"] == 
-"行程"]
-        response = "你的行程：\n" + "\n".join(event_list) if event_list 
-else "目前沒有行程記錄。"
+        event_list = [r["description"] for r in records if r["type"] == "行程"]
+        response = "你的行程：\n" + "\n".join(event_list) if event_list else "目前沒有行程記錄。"
 
     line_bot_api.reply_message(event.reply_token, 
 TextSendMessage(text=response))
