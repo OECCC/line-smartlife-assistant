@@ -1,4 +1,4 @@
-from flask import Flask, request
+from flask import Flask, request, send_file
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
 from linebot.models import MessageEvent, TextMessage, TextSendMessage, ImageSendMessage
@@ -9,7 +9,6 @@ import schedule
 import time
 import threading
 import matplotlib.pyplot as plt
-import io
 
 app = Flask(__name__)
 
@@ -86,13 +85,11 @@ def generate_calendar_image(records):
 
     ax.axis("off")
     
-    # 把圖片存到記憶體中，而不是存成檔案
-    img_io = io.BytesIO()
-    plt.savefig(img_io, format="png", bbox_inches="tight")
-    img_io.seek(0)
-    
-    return img_io
-    
+    # 儲存圖片為 `calendar.png`
+    filename = "calendar.png"
+    plt.savefig(filename, format="png", bbox_inches="tight")
+    return filename
+
 # 設定每天 06:00 自動推送當日行程
 def send_daily_schedule():
     today = datetime.datetime.now().strftime("%Y-%m-%d")
@@ -136,10 +133,13 @@ def handle_message(event):
         # 產生日曆圖片
         calendar_image = generate_calendar_image(records_today)
 
-        # 上傳圖片到 LINE，然後發送給使用者
+        # 取得 Render 伺服器的網址
+        base_url = os.getenv("RENDER_EXTERNAL_URL", "https://你的-render-網址")
+
+        # 發送圖片給使用者
         image_message = ImageSendMessage(
-            original_content_url="data:image/png;base64," + base64.b64encode(calendar_image.getvalue()).decode(),
-            preview_image_url="data:image/png;base64," + base64.b64encode(calendar_image.getvalue()).decode()
+            original_content_url=f"{base_url}/calendar.png",
+            preview_image_url=f"{base_url}/calendar.png"
         )
 
         line_bot_api.reply_message(event.reply_token, image_message)
@@ -148,6 +148,10 @@ def handle_message(event):
         response = "請輸入「日曆」來查看今日記錄"
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text=response))
 
+# 提供 `calendar.png` 給 LINE 讀取
+@app.route("/calendar.png")
+def serve_calendar():
+    return send_file("calendar.png", mimetype="image/png")
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
