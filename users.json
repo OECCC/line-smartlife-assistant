@@ -1,0 +1,13 @@
+USERS_FILE = "users.json"
+
+def load_users():
+    """從 users.json 載入已註冊的使用者"""
+    if os.path.exists(USERS_FILE):
+        with open(USERS_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return []
+
+def save_users(users):
+    """將新的使用者清單存入 users.json"""
+    with open(USERS_FILE, "w", encoding="utf-8") as f:
+        json.dump(users, f, ensure_ascii=False, indent=2)
