@@ -23,11 +23,14 @@ handler = WebhookHandler(LINE_CHANNEL_SECRET)
 records = []
 USERS_FILE = "users.json"
 
-# 載入已註冊的使用者
-def load_users():
-    if os.path.exists(USERS_FILE):
-        with open(USERS_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
+# 載入已註冊的使用者def load_users():
+    if os.path.exists("users.json"):
+        try:
+            with open("users.json", "r", encoding="utf-8") as f:
+                content = f.read().strip()
+                return json.loads(content) if content else []
+        except json.JSONDecodeError:
+            return []
     return []
 
 # 存儲已註冊的使用者
@@ -35,12 +38,16 @@ def save_users(users):
     with open(USERS_FILE, "w", encoding="utf-8") as f:
         json.dump(users, f, ensure_ascii=False, indent=2)
 
-# 載入記帳 & 行程
-def load_data():
+# 載入記帳 & 行程def load_data():
     global records
     if os.path.exists("records.json"):
-        with open("records.json", "r", encoding="utf-8") as f:
-            records = json.load(f)
+        try:
+            with open("records.json", "r", encoding="utf-8") as f:
+                content = f.read().strip()
+                records = json.loads(content) if content else []
+        except json.JSONDecodeError:
+            records = []
+
 
 # 存儲記帳 & 行程
 def save_data():
