@@ -19,14 +19,15 @@ LINE_CHANNEL_SECRET = os.getenv("LINE_CHANNEL_SECRET")
 line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
 
-# 儲存記帳 & 行程的資料
-records = []
+# 記帳 & 行程的資料存取
+RECORDS_FILE = "records.json"
 USERS_FILE = "users.json"
 
-# 載入已註冊的使用者def load_users():
-    if os.path.exists("users.json"):
+# 載入已註冊的使用者
+def load_users():
+    if os.path.exists(USERS_FILE):
         try:
-            with open("users.json", "r", encoding="utf-8") as f:
+            with open(USERS_FILE, "r", encoding="utf-8") as f:
                 content = f.read().strip()
                 return json.loads(content) if content else []
         except json.JSONDecodeError:
@@ -38,20 +39,20 @@ def save_users(users):
     with open(USERS_FILE, "w", encoding="utf-8") as f:
         json.dump(users, f, ensure_ascii=False, indent=2)
 
-# 載入記帳 & 行程def load_data():
-    global records
-    if os.path.exists("records.json"):
+# 載入記帳 & 行程
+def load_data():
+    if os.path.exists(RECORDS_FILE):
         try:
-            with open("records.json", "r", encoding="utf-8") as f:
+            with open(RECORDS_FILE, "r", encoding="utf-8") as f:
                 content = f.read().strip()
-                records = json.loads(content) if content else []
+                return json.loads(content) if content else []
         except json.JSONDecodeError:
-            records = []
-
+            return []
+    return []
 
 # 存儲記帳 & 行程
-def save_data():
-    with open("records.json", "w", encoding="utf-8") as f:
+def save_data(records):
+    with open(RECORDS_FILE, "w", encoding="utf-8") as f:
         json.dump(records, f, ensure_ascii=False, indent=2)
 
 @app.route("/", methods=["GET"])
@@ -75,12 +76,12 @@ def generate_calendar_image(records):
     today = datetime.datetime.now().strftime("%Y-%m-%d")
     plt.figure(figsize=(6, 4))
     plt.text(0.1, 0.9, f"📅 {today}", fontsize=14, weight="bold")
-    
+
     y_pos = 0.7
     for record in records:
         plt.text(0.1, y_pos, f"🔹 {record}", fontsize=12)
         y_pos -= 0.1
-    
+
     plt.axis("off")
     filename = "calendar.png"
     plt.savefig(filename, bbox_inches="tight")
@@ -90,6 +91,7 @@ def generate_calendar_image(records):
 def send_daily_schedule():
     today = datetime.datetime.now().strftime("%Y-%m-%d")
     users = load_users()
+    records = load_data()  # 讀取最新的資料
     message = "📅 今日行程 & 記帳 📅\n"
     records_today = [r["description"] for r in records if r["datetime"].startswith(today)]
 
@@ -97,10 +99,11 @@ def send_daily_schedule():
         message += "\n".join([f"🔹 {r}" for r in records_today])
     else:
         message += "📌 今天沒有任何記錄"
-    
+
     for user_id in users:
         line_bot_api.push_message(user_id, TextSendMessage(text=message))
 
+# 設定排程
 schedule.every().day.at("06:00").do(send_daily_schedule)
 
 def schedule_runner():
@@ -117,12 +120,41 @@ def handle_message(event):
     today = datetime.datetime.now().strftime("%Y-%m-%d")
 
     users = load_users()
+    records = load_data()  # 讀取最新的記帳 & 行程資料
+
     if user_id not in users:
         users.append(user_id)
         save_users(users)
         line_bot_api.push_message(user_id, TextSendMessage(text="✅ 你已成功註冊！每日 6:00 會收到行程提醒！"))
 
-    if user_input == "日曆":
+    if "元" in user_input:
+        parts = user_input.split()
+        if len(parts) >= 2:
+            try:
+                amount = float(parts[1].replace("元", ""))
+                category = parts[2] if len(parts) > 2 else "未分類"
+                records.append({
+                    "type": "消費",
+                    "description": parts[0],
+                    "amount": amount,
+                    "category": category,
+                    "datetime": f"{today} {datetime.datetime.now().strftime('%H:%M')}"
+                })
+                save_data(records)
+                response = f"已記錄消費：{parts[0]}，金額：{amount} 元，類別：{category}"
+            except ValueError:
+                response = "請輸入有效的金額，例如：午餐 120元 食物"
+    
+    elif "點" in user_input or "週" in user_input or "日" in user_input:
+        records.append({
+            "type": "行程",
+            "description": user_input,
+            "datetime": f"{today} {datetime.datetime.now().strftime('%H:%M')}"
+        })
+        save_data(records)
+        response = f"已記錄行程：{user_input}"
+
+    elif user_input == "日曆":
         records_today = [r["description"] for r in records if r["datetime"].startswith(today)]
         if not records_today:
             response = "📌 今天沒有任何記錄"
@@ -135,11 +167,12 @@ def handle_message(event):
             preview_image_url=f"https://你的-render-網址/{calendar_image}"
         )
         line_bot_api.reply_message(event.reply_token, message)
+    
     else:
         response = "請輸入「日曆」來查看今日記錄"
-        line_bot_api.reply_message(event.reply_token, TextSendMessage(text=response))
+    
+    line_bot_api.reply_message(event.reply_token, TextSendMessage(text=response))
 
 if __name__ == "__main__":
-    load_data()
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
