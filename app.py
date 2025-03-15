@@ -63,8 +63,7 @@ def handle_message(event):
                     "datetime": now
                 })
                 save_data()
-                response = f"已記錄消費：{parts[0]}，金額：{amount} 
-元，類別：{category}，時間：{now}"
+                response = f"已記錄消費：{parts[0]}，金額：{amount} 元，類別：{category}，時間：{now}"
             except ValueError:
                 response = "請輸入有效的金額，例如：午餐 120元 食物"
     elif "點" in user_input or "週" in user_input or "日" in user_input:
